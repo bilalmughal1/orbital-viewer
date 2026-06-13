@@ -4,7 +4,7 @@ Satellite tasking visualization — a miniature mission-control demo.
 
 **Live demo: https://geo.fahadbilal.com**
 
-![Orbital Viewer globe view](./web/src/assets/hero.png)
+![Orbital Viewer globe view](./web/src/assets/globe.png)
 
 ## Overview
 
