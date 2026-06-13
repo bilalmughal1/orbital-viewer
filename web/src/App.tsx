@@ -117,11 +117,13 @@ export default function App() {
       },
       center: [54.5, 24.5],
       zoom: 6.5,
+      // @ts-expect-error MapLibre GL 5 types do not yet include top-level projection option
       projection: 'globe' as unknown as maplibregl.ProjectionSpecification,
     })
 
     // Atmosphere / sky
     m.on('style.load', () => {
+      // @ts-expect-error setFog not yet in MapLibre GL 5 type definitions
       m.setFog({
         color: 'rgb(10, 20, 40)',
         'high-color': 'rgb(15, 30, 80)',
