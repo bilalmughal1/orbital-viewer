@@ -96,3 +96,4 @@ GitHub Actions runs on every push and pull request to `main`:
 
 - **api job**: PostGIS service container, ruff lint, schema + seed load, pytest against the live DB
 - **web job**: `npm ci`, TypeScript typecheck (`tsc -b --noEmit`), Vite production build
+
