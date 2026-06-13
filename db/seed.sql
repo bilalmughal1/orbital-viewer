@@ -87,6 +87,21 @@ VALUES
 ('Altair-2', 'optical',        '2026-06-15 14:20:00+00', '2026-06-15 14:24:00+00',  5.0,
  ST_MakeEnvelope(55.15, 24.95, 55.33, 25.13, 4326));
 
+-- Ruwais Energy Complex passes (AOI lon 52.65–52.95, lat 24.05–24.30, window Jun 8–13)
+-- All three footprints overlap the Ruwais AOI geometry.
+INSERT INTO pass_footprints
+    (satellite, sensor_type, pass_start, pass_end, cloud_cover_pct, footprint)
+VALUES
+-- clean match: hyperspectral, 5% cloud, within window → passes all filters
+('Altair-3', 'hyperspectral',  '2026-06-10 09:15:00+00', '2026-06-10 09:18:00+00',  5.0,
+ ST_MakeEnvelope(52.60, 24.00, 52.85, 24.22, 4326)),
+-- cloud-rejected: hyperspectral but 25% cloud > 10% max → correctly excluded
+('Altair-1', 'hyperspectral',  '2026-06-11 06:30:00+00', '2026-06-11 06:33:00+00', 25.0,
+ ST_MakeEnvelope(52.68, 24.08, 52.92, 24.28, 4326)),
+-- optical match: 8% cloud, in window → matches (query filters cloud/spatial/time, not sensor)
+('Altair-2', 'optical',        '2026-06-09 07:45:00+00', '2026-06-09 07:49:00+00',  8.0,
+ ST_MakeEnvelope(52.70, 24.10, 52.95, 24.30, 4326));
+
 
 -- Collection needs: UAE/Gulf AOIs
 INSERT INTO collection_needs
