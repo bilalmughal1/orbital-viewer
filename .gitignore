@@ -35,3 +35,4 @@ web/.vite/
 *.key
 *.crt
 secrets/
+ORBITAL_VIEWER_BRIEF.md
