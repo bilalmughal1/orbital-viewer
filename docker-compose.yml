@@ -1,0 +1,54 @@
+version: "3.9"
+
+networks:
+  orbital-net:
+    name: orbital-net
+    driver: bridge
+
+volumes:
+  orbital-pgdata:
+    name: orbital-pgdata
+
+services:
+  db:
+    image: kartoza/postgis:16-3.4
+    container_name: orbital-db
+    restart: unless-stopped
+    networks:
+      - orbital-net
+    ports:
+      - "127.0.0.1:5440:5432"
+    volumes:
+      - orbital-pgdata:/var/lib/postgresql
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ./db/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-orbital}
+      POSTGRES_USER: ${POSTGRES_USER:-orbital}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_MULTIPLE_EXTENSIONS: postgis,postgis_topology
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-orbital} -d $${POSTGRES_DB:-orbital}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: orbital-api
+    restart: unless-stopped
+    networks:
+      - orbital-net
+    ports:
+      - "127.0.0.1:8200:8200"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-orbital}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/${POSTGRES_DB:-orbital}
+      API_HOST: "0.0.0.0"
+      API_PORT: "8200"
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+    depends_on:
+      db:
+        condition: service_healthy
