@@ -89,14 +89,15 @@ export default function App() {
       style: {
         version: 8,
         name: 'EOX S2Cloudless Globe',
+        projection: { type: 'globe' },
         sources: {
           's2cloudless': {
             type: 'raster',
             tiles: [
-              'https://s2maps-tiles.eu/wmts?layer=s2cloudless-2023_3857&style=default&tilematrixset=GoogleMapsCompatible&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image%2Fjpeg&TileMatrix={z}&TileCol={x}&TileRow={y}',
+              'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/{z}/{y}/{x}.jpg',
             ],
             tileSize: 256,
-            attribution: '© EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2023)',
+            attribution: '© EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2020)',
             maxzoom: 15,
           },
         },
