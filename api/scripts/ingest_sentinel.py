@@ -13,7 +13,7 @@ import asyncio
 import json
 import os
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import asyncpg
 import httpx
@@ -107,7 +107,9 @@ async def main() -> None:
                     geom_data = {"type": "Polygon", "coordinates": geom_data["coordinates"][0]}
                 geom_json = json.dumps(geom_data)
                 props = item["properties"]
-                acquired_at: str = props["datetime"]
+                acquired_at: datetime = datetime.fromisoformat(
+                    props["datetime"].replace("Z", "+00:00")
+                )
                 cloud = float(props.get("eo:cloud_cover", 0))
 
                 row = await conn.fetchrow(
