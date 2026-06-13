@@ -27,6 +27,15 @@ interface NeedProps {
   notes: string | null
 }
 
+interface AcquisitionProps {
+  id: number
+  source: string
+  product_id: string
+  acquired_at: string
+  cloud_cover_pct: number
+  sensor: string
+}
+
 interface Match {
   pass_id: number
   satellite: string
@@ -35,7 +44,10 @@ interface Match {
   pass_end: string
   cloud_cover_pct: number
   coverage_km2: number
+  source: string
 }
+
+const ACQ_COLOR = '#22d3ee'
 
 // ── Sensor colour palette ────────────────────────────────────────────────────
 
@@ -146,12 +158,14 @@ export default function App() {
 
     m.on('load', async () => {
       // ── Fetch data ──────────────────────────────────────────────────────
-      const [passesRes, needsRes] = await Promise.all([
+      const [passesRes, needsRes, acqRes] = await Promise.all([
         fetch('/api/passes'),
         fetch('/api/needs'),
+        fetch('/api/acquisitions'),
       ])
       const passes = await passesRes.json()
       const needs = await needsRes.json()
+      const acquisitions = await acqRes.json()
 
       // ── Pass footprints source ──────────────────────────────────────────
       m.addSource('passes', { type: 'geojson', data: passes })
@@ -219,6 +233,58 @@ export default function App() {
           'line-opacity': 0.9,
         },
       })
+
+      // ── Real Sentinel-2 acquisitions source ────────────────────────────
+      m.addSource('acquisitions', { type: 'geojson', data: acquisitions })
+
+      m.addLayer({
+        id: 'acquisitions-fill',
+        type: 'fill',
+        source: 'acquisitions',
+        paint: {
+          'fill-color': ACQ_COLOR,
+          'fill-opacity': 0.18,
+        },
+      })
+
+      m.addLayer({
+        id: 'acquisitions-outline',
+        type: 'line',
+        source: 'acquisitions',
+        paint: {
+          'line-color': ACQ_COLOR,
+          'line-width': 1.5,
+          'line-opacity': 0.9,
+        },
+      })
+
+      // ── Acquisition click handler ───────────────────────────────────────
+      m.on('click', 'acquisitions-fill', (e) => {
+        const feat = e.features?.[0]
+        if (!feat) return
+        const a = feat.properties as AcquisitionProps
+        const html = `
+          <div class="ov-popup-inner">
+            <div class="ov-popup-title">
+              <span class="ov-sensor-dot" style="background:${ACQ_COLOR}"></span>
+              Real Sentinel-2 Acquisition
+            </div>
+            <table class="ov-table">
+              <tr><td>Product</td><td style="font-size:10px;word-break:break-all">${a.product_id}</td></tr>
+              <tr><td>Acquired</td><td>${fmtTime(a.acquired_at)}</td></tr>
+              <tr><td>Cloud</td><td>${a.cloud_cover_pct}%</td></tr>
+            </table>
+          </div>`
+        popup.current!
+          .setLngLat(e.lngLat)
+          .setHTML(html)
+          .addTo(m)
+        setSelectedNeed(null)
+        setMatches(null)
+      })
+
+      m.on('mouseenter', 'acquisitions-fill', () => { m.getCanvas().style.cursor = 'pointer' })
+      m.on('mouseleave', 'acquisitions-fill', () => { m.getCanvas().style.cursor = '' })
 
       // ── Pass click handler ──────────────────────────────────────────────
       m.on('click', 'passes-fill', (e) => {
@@ -360,17 +426,18 @@ export default function App() {
       return
     }
     el.innerHTML = `
-      <div class="ov-matches-header">Matching passes (${matches.length})</div>
+      <div class="ov-matches-header">Matches (${matches.length})</div>
       <table class="ov-table ov-matches-table">
-        <thead><tr><th>Satellite</th><th>Sensor</th><th>Time (UTC)</th><th>Cloud</th><th>Cov km²</th></tr></thead>
+        <thead><tr><th>Satellite</th><th>Sensor</th><th>Time (UTC)</th><th>Cloud</th><th>Cov km²</th><th>Source</th></tr></thead>
         <tbody>
           ${matches.map(m => `
             <tr>
               <td>${m.satellite}</td>
-              <td><span class="ov-sensor-dot" style="background:${SENSOR_COLORS[m.sensor_type] ?? '#aaa'}"></span>${m.sensor_type}</td>
+              <td><span class="ov-sensor-dot" style="background:${m.source === 'real-s2' ? ACQ_COLOR : (SENSOR_COLORS[m.sensor_type] ?? '#aaa')}"></span>${m.sensor_type}</td>
               <td>${fmtTime(m.pass_start)}</td>
               <td>${m.cloud_cover_pct}%</td>
               <td>${m.coverage_km2}</td>
+              <td style="color:${m.source === 'real-s2' ? ACQ_COLOR : '#64748b'}">${m.source === 'real-s2' ? 'Real S2' : 'Simulated'}</td>
             </tr>`).join('')}
         </tbody>
       </table>`
@@ -404,6 +471,12 @@ export default function App() {
           <div className="ov-legend-item">
             <span className="ov-legend-need-swatch" />
             Collection need
+          </div>
+        </div>
+        <div className="ov-legend-section" style={{ marginTop: 12 }}>
+          <div className="ov-legend-item">
+            <span className="ov-legend-swatch" style={{ background: ACQ_COLOR }} />
+            Real Sentinel-2
           </div>
         </div>
         <div className="ov-legend-section" style={{ marginTop: 12 }}>
