@@ -4,6 +4,8 @@ networks:
   orbital-prod-net:
     name: orbital-prod-net
     driver: bridge
+  n8n_default:
+    external: true
 
 volumes:
   orbital-pgdata-prod:
@@ -60,6 +62,7 @@ services:
     restart: unless-stopped
     networks:
       - orbital-prod-net
+      - n8n_default
     ports:
       - "127.0.0.1:8201:80"
     depends_on:
