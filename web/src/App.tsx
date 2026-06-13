@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import './App.css'
+import { buildSatGeoJSON, SAT_COLOR, type TleMap } from './satellites'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -67,6 +68,7 @@ export default function App() {
   const [matches, setMatches] = useState<Match[] | null>(null)
   const [loadingMatches, setLoadingMatches] = useState(false)
   const [selectedNeed, setSelectedNeed] = useState<NeedProps | null>(null)
+  const [showSats, setShowSats] = useState(true)
 
   const fetchMatches = useCallback(async (needId: number) => {
     setLoadingMatches(true)
@@ -279,11 +281,74 @@ export default function App() {
       m.on('mouseleave', 'passes-fill', () => { m.getCanvas().style.cursor = '' })
       m.on('mouseenter', 'needs-outline', () => { m.getCanvas().style.cursor = 'pointer' })
       m.on('mouseleave', 'needs-outline', () => { m.getCanvas().style.cursor = '' })
+
+      // ── Live satellite ground tracks (real TLE orbits) ──────────────────
+      try {
+        const tleRes = await fetch('/api/tles')
+        if (tleRes.ok) {
+          const tles = (await tleRes.json()) as TleMap
+          const { markers, tracks } = buildSatGeoJSON(tles)
+
+          m.addSource('sat-tracks', { type: 'geojson', data: tracks })
+          m.addSource('sat-markers', { type: 'geojson', data: markers })
+
+          m.addLayer({
+            id: 'sat-tracks-line',
+            type: 'line',
+            source: 'sat-tracks',
+            paint: {
+              'line-color': SAT_COLOR,
+              'line-width': 1,
+              'line-opacity': 0.55,
+            },
+          })
+          m.addLayer({
+            id: 'sat-dots',
+            type: 'circle',
+            source: 'sat-markers',
+            paint: {
+              'circle-color': SAT_COLOR,
+              'circle-radius': 5,
+              'circle-stroke-color': '#ffffff',
+              'circle-stroke-width': 1.5,
+            },
+          })
+          m.addLayer({
+            id: 'sat-labels',
+            type: 'symbol',
+            source: 'sat-markers',
+            layout: {
+              'text-field': ['get', 'name'],
+              'text-size': 11,
+              'text-offset': [0, 1.4],
+              'text-anchor': 'top',
+              'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+            },
+            paint: {
+              'text-color': SAT_COLOR,
+              'text-halo-color': '#0d1b2a',
+              'text-halo-width': 1.5,
+            },
+          })
+        }
+      } catch {
+        // Satellite layer is optional; map loads fine without it
+      }
     })
 
     map.current = m
     return () => { m.remove(); map.current = null }
   }, [fetchMatches])
+
+  // Toggle satellite layer visibility
+  useEffect(() => {
+    const m = map.current
+    if (!m) return
+    const vis = showSats ? 'visible' : 'none'
+    for (const id of ['sat-tracks-line', 'sat-dots', 'sat-labels']) {
+      if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', vis)
+    }
+  }, [showSats])
 
   // Update matches panel inside popup whenever matches arrive
   useEffect(() => {
@@ -316,6 +381,9 @@ export default function App() {
       {/* Header */}
       <header className="ov-header">
         <span className="ov-title">Orbital Viewer — Tasking Demo</span>
+        <button className="ov-sat-toggle" onClick={() => setShowSats(v => !v)}>
+          {showSats ? 'Hide orbits' : 'Show orbits'}
+        </button>
       </header>
 
       {/* Map */}
@@ -336,6 +404,16 @@ export default function App() {
           <div className="ov-legend-item">
             <span className="ov-legend-need-swatch" />
             Collection need
+          </div>
+        </div>
+        <div className="ov-legend-section" style={{ marginTop: 12 }}>
+          <div className="ov-legend-label">Live orbits (TLE)</div>
+          <div className="ov-legend-item">
+            <span
+              className="ov-legend-swatch"
+              style={{ background: SAT_COLOR, borderRadius: '50%' }}
+            />
+            Real satellite
           </div>
         </div>
       </aside>

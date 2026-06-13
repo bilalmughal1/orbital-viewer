@@ -4,6 +4,7 @@ import json
 import asyncio
 from contextlib import asynccontextmanager
 
+import httpx
 import asyncpg
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +29,41 @@ REQUEST_LATENCY = Histogram(
     buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5],
 )
 PASSES_TOTAL = Gauge("orbital_passes_total", "Total pass footprints in DB")
+
+
+# ---------------------------------------------------------------------------
+# TLE proxy cache
+# ---------------------------------------------------------------------------
+_NORAD_IDS: dict[str, int] = {
+    "Sentinel-2A": 40697,
+    "Sentinel-2B": 42063,
+    "Landsat 8":   39084,
+    "Landsat 9":   49260,
+    "Sentinel-1A": 39634,
+}
+_TLE_TTL = 3600.0
+_tle_cache: dict[str, object] = {"data": None, "fetched_at": 0.0}
+_tle_lock = asyncio.Lock()
+
+
+async def _fetch_tles() -> dict[str, dict]:
+    result: dict[str, dict] = {}
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for name, norad_id in _NORAD_IDS.items():
+            url = (
+                "https://celestrak.org/NORAD/elements/gp.php"
+                f"?CATNR={norad_id}&FORMAT=tle"
+            )
+            resp = await client.get(url)
+            resp.raise_for_status()
+            lines = resp.text.strip().splitlines()
+            if len(lines) >= 3:
+                result[name] = {
+                    "name": name,
+                    "tle1": lines[1].strip(),
+                    "tle2": lines[2].strip(),
+                }
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +266,33 @@ async def get_matches(need_id: int):
 
     _record("/api/needs/{id}/matches", 200, "GET", time.perf_counter() - t0)
     return result
+
+
+@app.get("/api/tles")
+async def get_tles():
+    t0 = time.perf_counter()
+    async with _tle_lock:
+        now = time.time()
+        cached_data = _tle_cache["data"]
+        fetched_at = float(_tle_cache["fetched_at"])  # type: ignore[arg-type]
+        if cached_data is not None and now - fetched_at < _TLE_TTL:
+            _record("/api/tles", 200, "GET", time.perf_counter() - t0)
+            return cached_data
+        try:
+            data = await _fetch_tles()
+            _tle_cache["data"] = data
+            _tle_cache["fetched_at"] = now
+            _record("/api/tles", 200, "GET", time.perf_counter() - t0)
+            return data
+        except Exception as exc:
+            if cached_data is not None:
+                _record("/api/tles", 200, "GET", time.perf_counter() - t0)
+                return cached_data
+            _record("/api/tles", 503, "GET", time.perf_counter() - t0)
+            raise HTTPException(
+                status_code=503,
+                detail=f"TLE source unavailable: {exc}",
+            )
 
 
 @app.get("/metrics")

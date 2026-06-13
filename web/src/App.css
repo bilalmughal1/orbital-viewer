@@ -88,6 +88,24 @@
   flex-shrink: 0;
 }
 
+/* ── Satellite toggle ────────────────────────────────────────────────────── */
+
+.ov-sat-toggle {
+  margin-left: auto;
+  background: none;
+  border: 1px solid rgba(232, 121, 249, 0.4);
+  color: #e879f9;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  letter-spacing: 0.03em;
+}
+
+.ov-sat-toggle:hover {
+  background: rgba(232, 121, 249, 0.1);
+}
+
 /* ── MapLibre popup overrides ────────────────────────────────────────────── */
 
 .ov-popup .maplibregl-popup-content {
