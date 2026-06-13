@@ -90,6 +90,21 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("Could not connect to database after 10 attempts")
 
     async with _pool.acquire() as conn:
+        # Ensure real_acquisitions table exists (prod DB volume skips init.sql re-runs)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS real_acquisitions (
+                id              SERIAL PRIMARY KEY,
+                source          TEXT         NOT NULL DEFAULT 'sentinel-2',
+                product_id      TEXT         NOT NULL UNIQUE,
+                footprint       GEOMETRY(POLYGON, 4326) NOT NULL,
+                acquired_at     TIMESTAMPTZ  NOT NULL,
+                cloud_cover_pct NUMERIC(5,2) NOT NULL
+                                CHECK (cloud_cover_pct >= 0 AND cloud_cover_pct <= 100),
+                sensor          TEXT         NOT NULL DEFAULT 'optical'
+            );
+            CREATE INDEX IF NOT EXISTS idx_real_acquisitions_geom
+                ON real_acquisitions USING GIST (footprint);
+        """)
         count = await conn.fetchval("SELECT COUNT(*) FROM pass_footprints")
         PASSES_TOTAL.set(count)
 
@@ -215,11 +230,30 @@ async def get_needs():
     return {"type": "FeatureCollection", "features": features}
 
 
+@app.get("/api/acquisitions")
+async def get_acquisitions():
+    t0 = time.perf_counter()
+    pool = await get_pool()
+    sql = """
+        SELECT id, source, product_id, acquired_at, cloud_cover_pct, sensor,
+               ST_AsGeoJSON(footprint)::text AS geojson
+        FROM real_acquisitions
+        ORDER BY acquired_at
+    """
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(sql)
+    features = [_row_to_feature(r) for r in rows]
+    _record("/api/acquisitions", 200, "GET", time.perf_counter() - t0)
+    return {"type": "FeatureCollection", "features": features}
+
+
 @app.get("/api/needs/{need_id}/matches")
 async def get_matches(need_id: int):
     t0 = time.perf_counter()
     pool = await get_pool()
 
+    # UNION simulated passes with real Sentinel-2 acquisitions;
+    # source column distinguishes them in the response.
     sql = """
         SELECT
             p.id                                                      AS pass_id,
@@ -233,7 +267,8 @@ async def get_matches(need_id: int):
                     ST_Intersection(p.footprint, n.aoi)::geography
                 ) / 1e6)::numeric,
                 2
-            )                                                         AS coverage_km2
+            )                                                         AS coverage_km2,
+            'simulated'                                               AS source
         FROM pass_footprints p
         JOIN collection_needs n ON n.id = $1
         WHERE
@@ -241,7 +276,32 @@ async def get_matches(need_id: int):
             AND p.pass_start >= n.window_start
             AND p.pass_end   <= n.window_end
             AND p.cloud_cover_pct <= n.max_cloud_pct
-        ORDER BY p.cloud_cover_pct, p.pass_start
+
+        UNION ALL
+
+        SELECT
+            a.id                                                      AS pass_id,
+            'Sentinel-2 (real)'                                       AS satellite,
+            a.sensor                                                  AS sensor_type,
+            a.acquired_at                                             AS pass_start,
+            a.acquired_at                                             AS pass_end,
+            a.cloud_cover_pct,
+            ROUND(
+                (ST_Area(
+                    ST_Intersection(a.footprint, n.aoi)::geography
+                ) / 1e6)::numeric,
+                2
+            )                                                         AS coverage_km2,
+            'real-s2'                                                 AS source
+        FROM real_acquisitions a
+        JOIN collection_needs n ON n.id = $1
+        WHERE
+            ST_Intersects(a.footprint, n.aoi)
+            AND a.acquired_at >= n.window_start
+            AND a.acquired_at <= n.window_end
+            AND a.cloud_cover_pct <= n.max_cloud_pct
+
+        ORDER BY cloud_cover_pct, pass_start
     """
     async with pool.acquire() as conn:
         need_exists = await conn.fetchval(
@@ -262,6 +322,7 @@ async def get_matches(need_id: int):
             "pass_end": r["pass_end"].isoformat(),
             "cloud_cover_pct": float(r["cloud_cover_pct"]),
             "coverage_km2": float(r["coverage_km2"]) if r["coverage_km2"] is not None else 0.0,
+            "source": r["source"],
         })
 
     _record("/api/needs/{id}/matches", 200, "GET", time.perf_counter() - t0)

@@ -36,3 +36,17 @@ CREATE TABLE IF NOT EXISTS collection_needs (
 
 CREATE INDEX IF NOT EXISTS idx_collection_needs_geom
     ON collection_needs USING GIST (aoi);
+
+
+CREATE TABLE IF NOT EXISTS real_acquisitions (
+    id              SERIAL PRIMARY KEY,
+    source          TEXT         NOT NULL DEFAULT 'sentinel-2',
+    product_id      TEXT         NOT NULL UNIQUE,
+    footprint       GEOMETRY(POLYGON, 4326) NOT NULL,
+    acquired_at     TIMESTAMPTZ  NOT NULL,
+    cloud_cover_pct NUMERIC(5,2) NOT NULL CHECK (cloud_cover_pct >= 0 AND cloud_cover_pct <= 100),
+    sensor          TEXT         NOT NULL DEFAULT 'optical'
+);
+
+CREATE INDEX IF NOT EXISTS idx_real_acquisitions_geom
+    ON real_acquisitions USING GIST (footprint);
