@@ -197,3 +197,249 @@
 .ov-matches-table tbody tr:hover {
   background: rgba(255,255,255,0.04);
 }
+
+/* ── Tasking Request panel ───────────────────────────────────────────────── */
+
+.ov-tasking-panel {
+  position: absolute;
+  top: 50px;
+  right: 52px;  /* clear of MapLibre nav-control (29px wide + margin) */
+  z-index: 10;
+  background: rgba(13, 17, 23, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  padding: 12px 14px;
+  width: 270px;
+  max-height: calc(100vh - 70px);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.ov-panel-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #94a3b8;
+  margin-bottom: 10px;
+}
+
+.ov-panel-section-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
+/* ── Draw controls ───────────────────────────────────────────────────────── */
+
+.ov-draw-controls {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.ov-draw-status {
+  font-size: 11px;
+  color: #64748b;
+  min-height: 16px;
+  margin-bottom: 2px;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.ov-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.15);
+  cursor: pointer;
+  background: rgba(255,255,255,0.05);
+  color: #cbd5e1;
+  white-space: nowrap;
+}
+
+.ov-btn:hover {
+  background: rgba(255,255,255,0.10);
+}
+
+.ov-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ov-btn-draw {
+  border-color: rgba(249, 115, 22, 0.5);
+  color: #f97316;
+}
+
+.ov-btn-draw:hover {
+  background: rgba(249, 115, 22, 0.12);
+}
+
+.ov-btn-draw-active {
+  border-color: rgba(249, 115, 22, 0.8);
+  color: #fb923c;
+  background: rgba(249, 115, 22, 0.15);
+}
+
+.ov-btn-ghost {
+  border-color: rgba(255,255,255,0.1);
+  color: #64748b;
+}
+
+.ov-btn-primary {
+  width: 100%;
+  margin-top: 10px;
+  padding: 6px 10px;
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.5);
+  color: #38bdf8;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.ov-btn-primary:hover:not(:disabled) {
+  background: rgba(56, 189, 248, 0.25);
+}
+
+/* ── Form rows ───────────────────────────────────────────────────────────── */
+
+.ov-form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.ov-form-label {
+  font-size: 11px;
+  color: #64748b;
+  width: 58px;
+  flex-shrink: 0;
+}
+
+.ov-select {
+  flex: 1;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  color: #cbd5e1;
+  font-size: 11px;
+  padding: 3px 6px;
+}
+
+.ov-select option {
+  background: #0f172a;
+}
+
+.ov-slider-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ov-slider {
+  flex: 1;
+  accent-color: #38bdf8;
+  height: 3px;
+}
+
+.ov-cloud-val {
+  font-size: 11px;
+  color: #94a3b8;
+  width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.ov-date-input {
+  flex: 1;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  color: #cbd5e1;
+  font-size: 11px;
+  padding: 3px 6px;
+}
+
+.ov-date-input::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
+}
+
+/* ── Results list ────────────────────────────────────────────────────────── */
+
+.ov-results {
+  margin-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  padding-top: 8px;
+}
+
+.ov-results-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
+.ov-result-item {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 5px;
+  padding: 6px 8px;
+  margin-bottom: 5px;
+}
+
+.ov-result-top {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 3px;
+}
+
+.ov-result-sat {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #e2e8f0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-result-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 10.5px;
+  color: #64748b;
+}
+
+.ov-source-badge {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.ov-badge-sim {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.ov-badge-real {
+  background: rgba(34, 211, 238, 0.15);
+  color: #22d3ee;
+  border: 1px solid rgba(34, 211, 238, 0.3);
+}

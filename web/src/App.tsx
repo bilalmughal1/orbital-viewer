@@ -47,7 +47,22 @@ interface Match {
   source: string
 }
 
+interface TaskingMatch {
+  pass_id: number
+  satellite: string
+  sensor_type: string
+  pass_start: string
+  pass_end: string
+  cloud_cover_pct: number
+  coverage_km2: number
+  source: string
+  geojson: string
+}
+
+type DrawMode = 'idle' | 'waitingFirst' | 'waitingSecond' | 'drawn'
+
 const ACQ_COLOR = '#22d3ee'
+const MATCH_SIM_COLOR = '#fbbf24'   // amber for simulated tasking matches
 
 // ── Sensor colour palette ────────────────────────────────────────────────────
 
@@ -71,16 +86,47 @@ function fmtTime(iso: string) {
   })
 }
 
+function bboxPolygon(
+  lng1: number, lat1: number,
+  lng2: number, lat2: number,
+) {
+  const minLng = Math.min(lng1, lng2)
+  const maxLng = Math.max(lng1, lng2)
+  const minLat = Math.min(lat1, lat2)
+  const maxLat = Math.max(lat1, lat2)
+  return {
+    type: 'Polygon' as const,
+    coordinates: [[[minLng, minLat], [maxLng, minLat], [maxLng, maxLat], [minLng, maxLat], [minLng, minLat]]],
+  }
+}
+
 // ── Main component ───────────────────────────────────────────────────────────
 
 export default function App() {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const popup = useRef<maplibregl.Popup | null>(null)
+
+  // Existing state
   const [matches, setMatches] = useState<Match[] | null>(null)
   const [loadingMatches, setLoadingMatches] = useState(false)
   const [selectedNeed, setSelectedNeed] = useState<NeedProps | null>(null)
   const [showSats, setShowSats] = useState(true)
+
+  // Drawing state (refs for map handlers, state for UI re-render)
+  const drawModeRef = useRef<DrawMode>('idle')
+  const corner1Ref = useRef<{ lng: number; lat: number } | null>(null)
+  const [drawMode, setDrawMode] = useState<DrawMode>('idle')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [aoiGeom, setAoiGeom] = useState<any>(null)
+
+  // Tasking constraints
+  const [taskingSensor, setTaskingSensor] = useState('any')
+  const [taskingCloud, setTaskingCloud] = useState(50)
+  const [taskingStart, setTaskingStart] = useState('2026-06-08')
+  const [taskingEnd, setTaskingEnd] = useState('2026-06-15')
+  const [taskingResults, setTaskingResults] = useState<TaskingMatch[] | null>(null)
+  const [taskingLoading, setTaskingLoading] = useState(false)
 
   const fetchMatches = useCallback(async (needId: number) => {
     setLoadingMatches(true)
@@ -94,6 +140,83 @@ export default function App() {
       setLoadingMatches(false)
     }
   }, [])
+
+  // Clear all tasking state + map layers
+  const clearTasking = useCallback(() => {
+    drawModeRef.current = 'idle'
+    corner1Ref.current = null
+    setDrawMode('idle')
+    setAoiGeom(null)
+    setTaskingResults(null)
+    const m = map.current
+    if (!m) return
+    m.getCanvas().style.cursor = ''
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const empty: any = { type: 'FeatureCollection', features: [] }
+    const aoiSrc = m.getSource('aoi-draw') as maplibregl.GeoJSONSource | undefined
+    if (aoiSrc) aoiSrc.setData(empty)
+    const matchSrc = m.getSource('tasking-matches') as maplibregl.GeoJSONSource | undefined
+    if (matchSrc) matchSrc.setData(empty)
+  }, [])
+
+  // Enter rectangle-draw mode
+  const startDrawing = useCallback(() => {
+    drawModeRef.current = 'waitingFirst'
+    corner1Ref.current = null
+    setDrawMode('waitingFirst')
+    setAoiGeom(null)
+    setTaskingResults(null)
+    const m = map.current
+    if (!m) return
+    m.getCanvas().style.cursor = 'crosshair'
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const empty: any = { type: 'FeatureCollection', features: [] }
+    const aoiSrc = m.getSource('aoi-draw') as maplibregl.GeoJSONSource | undefined
+    if (aoiSrc) aoiSrc.setData(empty)
+    const matchSrc = m.getSource('tasking-matches') as maplibregl.GeoJSONSource | undefined
+    if (matchSrc) matchSrc.setData(empty)
+  }, [])
+
+  // Submit AOI to /api/match
+  const submitTasking = useCallback(async () => {
+    if (!aoiGeom) return
+    setTaskingLoading(true)
+    setTaskingResults(null)
+    try {
+      const res = await fetch('/api/match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          geometry: aoiGeom,
+          sensor: taskingSensor === 'any' ? null : taskingSensor,
+          max_cloud: taskingCloud,
+          window_start: taskingStart ? `${taskingStart}T00:00:00Z` : null,
+          window_end: taskingEnd ? `${taskingEnd}T23:59:59Z` : null,
+        }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data: TaskingMatch[] = await res.json()
+      setTaskingResults(data)
+      const m = map.current
+      if (m) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const fc: any = {
+          type: 'FeatureCollection',
+          features: data.map(d => ({
+            type: 'Feature',
+            geometry: JSON.parse(d.geojson),
+            properties: { source: d.source, satellite: d.satellite, sensor_type: d.sensor_type },
+          })),
+        }
+        const matchSrc = m.getSource('tasking-matches') as maplibregl.GeoJSONSource | undefined
+        if (matchSrc) matchSrc.setData(fc)
+      }
+    } catch {
+      setTaskingResults([])
+    } finally {
+      setTaskingLoading(false)
+    }
+  }, [aoiGeom, taskingSensor, taskingCloud, taskingStart, taskingEnd])
 
   useEffect(() => {
     if (map.current || !mapContainer.current) return
@@ -170,7 +293,6 @@ export default function App() {
       // ── Pass footprints source ──────────────────────────────────────────
       m.addSource('passes', { type: 'geojson', data: passes })
 
-      // Fill, coloured by sensor_type
       m.addLayer({
         id: 'passes-fill',
         type: 'fill',
@@ -189,7 +311,6 @@ export default function App() {
         },
       })
 
-      // Outline
       m.addLayer({
         id: 'passes-outline',
         type: 'line',
@@ -258,8 +379,56 @@ export default function App() {
         },
       })
 
+      // ── AOI draw source/layers ─────────────────────────────────────────
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const emptyFC: any = { type: 'FeatureCollection', features: [] }
+      m.addSource('aoi-draw', { type: 'geojson', data: emptyFC })
+      m.addLayer({
+        id: 'aoi-fill',
+        type: 'fill',
+        source: 'aoi-draw',
+        paint: { 'fill-color': '#f97316', 'fill-opacity': 0.10 },
+      })
+      m.addLayer({
+        id: 'aoi-outline',
+        type: 'line',
+        source: 'aoi-draw',
+        paint: { 'line-color': '#f97316', 'line-width': 2, 'line-dasharray': [5, 3] },
+      })
+
+      // ── Tasking match results source/layers ────────────────────────────
+      m.addSource('tasking-matches', { type: 'geojson', data: emptyFC })
+      m.addLayer({
+        id: 'tasking-matches-fill',
+        type: 'fill',
+        source: 'tasking-matches',
+        paint: {
+          'fill-color': [
+            'match', ['get', 'source'],
+            'real-s2', ACQ_COLOR,
+            MATCH_SIM_COLOR,
+          ],
+          'fill-opacity': 0.45,
+        },
+      })
+      m.addLayer({
+        id: 'tasking-matches-outline',
+        type: 'line',
+        source: 'tasking-matches',
+        paint: {
+          'line-color': [
+            'match', ['get', 'source'],
+            'real-s2', ACQ_COLOR,
+            MATCH_SIM_COLOR,
+          ],
+          'line-width': 2.5,
+          'line-opacity': 1.0,
+        },
+      })
+
       // ── Acquisition click handler ───────────────────────────────────────
       m.on('click', 'acquisitions-fill', (e) => {
+        if (drawModeRef.current === 'waitingFirst' || drawModeRef.current === 'waitingSecond') return
         const feat = e.features?.[0]
         if (!feat) return
         const a = feat.properties as AcquisitionProps
@@ -284,10 +453,17 @@ export default function App() {
       })
 
       m.on('mouseenter', 'acquisitions-fill', () => { m.getCanvas().style.cursor = 'pointer' })
-      m.on('mouseleave', 'acquisitions-fill', () => { m.getCanvas().style.cursor = '' })
+      m.on('mouseleave', 'acquisitions-fill', () => {
+        if (drawModeRef.current === 'waitingFirst' || drawModeRef.current === 'waitingSecond') {
+          m.getCanvas().style.cursor = 'crosshair'
+        } else {
+          m.getCanvas().style.cursor = ''
+        }
+      })
 
       // ── Pass click handler ──────────────────────────────────────────────
       m.on('click', 'passes-fill', (e) => {
+        if (drawModeRef.current === 'waitingFirst' || drawModeRef.current === 'waitingSecond') return
         const feat = e.features?.[0]
         if (!feat) return
         const p = feat.properties as PassProps
@@ -313,6 +489,7 @@ export default function App() {
 
       // ── Need click handler ──────────────────────────────────────────────
       m.on('click', 'needs-outline', (e) => {
+        if (drawModeRef.current === 'waitingFirst' || drawModeRef.current === 'waitingSecond') return
         const feat = e.features?.[0]
         if (!feat) return
         const n = feat.properties as NeedProps
@@ -344,9 +521,53 @@ export default function App() {
       })
 
       m.on('mouseenter', 'passes-fill', () => { m.getCanvas().style.cursor = 'pointer' })
-      m.on('mouseleave', 'passes-fill', () => { m.getCanvas().style.cursor = '' })
+      m.on('mouseleave', 'passes-fill', () => {
+        if (drawModeRef.current === 'waitingFirst' || drawModeRef.current === 'waitingSecond') {
+          m.getCanvas().style.cursor = 'crosshair'
+        } else {
+          m.getCanvas().style.cursor = ''
+        }
+      })
       m.on('mouseenter', 'needs-outline', () => { m.getCanvas().style.cursor = 'pointer' })
-      m.on('mouseleave', 'needs-outline', () => { m.getCanvas().style.cursor = '' })
+      m.on('mouseleave', 'needs-outline', () => {
+        if (drawModeRef.current === 'waitingFirst' || drawModeRef.current === 'waitingSecond') {
+          m.getCanvas().style.cursor = 'crosshair'
+        } else {
+          m.getCanvas().style.cursor = ''
+        }
+      })
+
+      // ── Rectangle draw: two-click with live preview ────────────────────
+      m.on('mousemove', (e) => {
+        if (drawModeRef.current !== 'waitingSecond') return
+        const c1 = corner1Ref.current
+        if (!c1) return
+        const poly = bboxPolygon(c1.lng, c1.lat, e.lngLat.lng, e.lngLat.lat)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const fc: any = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: poly, properties: {} }] }
+        const aoiSrc = m.getSource('aoi-draw') as maplibregl.GeoJSONSource | undefined
+        if (aoiSrc) aoiSrc.setData(fc)
+      })
+
+      m.on('click', (e) => {
+        const mode = drawModeRef.current
+        if (mode === 'waitingFirst') {
+          corner1Ref.current = { lng: e.lngLat.lng, lat: e.lngLat.lat }
+          drawModeRef.current = 'waitingSecond'
+          setDrawMode('waitingSecond')
+        } else if (mode === 'waitingSecond') {
+          const c1 = corner1Ref.current!
+          const poly = bboxPolygon(c1.lng, c1.lat, e.lngLat.lng, e.lngLat.lat)
+          drawModeRef.current = 'drawn'
+          setDrawMode('drawn')
+          setAoiGeom(poly)
+          m.getCanvas().style.cursor = ''
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const fc: any = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: poly, properties: {} }] }
+          const aoiSrc = m.getSource('aoi-draw') as maplibregl.GeoJSONSource | undefined
+          if (aoiSrc) aoiSrc.setData(fc)
+        }
+      })
 
       // ── Live satellite ground tracks (real TLE orbits) ──────────────────
       try {
@@ -443,6 +664,15 @@ export default function App() {
       </table>`
   }, [matches, selectedNeed, loadingMatches])
 
+  // ── Draw status text ─────────────────────────────────────────────────────
+
+  const drawStatusText: Record<DrawMode, string> = {
+    idle: 'No AOI drawn',
+    waitingFirst: 'Click to set first corner',
+    waitingSecond: 'Click to set opposite corner',
+    drawn: 'AOI ready — adjust constraints and submit',
+  }
+
   return (
     <div className="app">
       {/* Header */}
@@ -455,6 +685,112 @@ export default function App() {
 
       {/* Map */}
       <div ref={mapContainer} className="map-container" />
+
+      {/* ── Tasking Request panel ─────────────────────────────────────── */}
+      <aside className="ov-tasking-panel">
+        <div className="ov-panel-title">Tasking Request</div>
+
+        <div className="ov-panel-section-label">1 · Draw AOI</div>
+        <div className="ov-draw-controls">
+          <button
+            className={`ov-btn ${drawMode === 'idle' || drawMode === 'drawn' ? 'ov-btn-draw' : 'ov-btn-draw-active'}`}
+            onClick={startDrawing}
+          >
+            {drawMode === 'drawn' ? 'Redraw Rectangle' : 'Draw Rectangle'}
+          </button>
+          {drawMode !== 'idle' && (
+            <button className="ov-btn ov-btn-ghost" onClick={clearTasking}>
+              Clear
+            </button>
+          )}
+        </div>
+        <div className="ov-draw-status">{drawStatusText[drawMode]}</div>
+
+        <div className="ov-panel-section-label" style={{ marginTop: 12 }}>2 · Constraints</div>
+
+        <div className="ov-form-row">
+          <span className="ov-form-label">Sensor</span>
+          <select
+            value={taskingSensor}
+            onChange={e => setTaskingSensor(e.target.value)}
+            className="ov-select"
+          >
+            <option value="any">Any</option>
+            <option value="optical">Optical</option>
+            <option value="thermal">Thermal</option>
+            <option value="hyperspectral">Hyperspectral</option>
+            <option value="SWIR">SWIR</option>
+            <option value="RF">RF</option>
+          </select>
+        </div>
+
+        <div className="ov-form-row">
+          <span className="ov-form-label">Max cloud</span>
+          <div className="ov-slider-wrap">
+            <input
+              type="range" min={0} max={100} value={taskingCloud}
+              onChange={e => setTaskingCloud(Number(e.target.value))}
+              className="ov-slider"
+            />
+            <span className="ov-cloud-val">{taskingCloud}%</span>
+          </div>
+        </div>
+
+        <div className="ov-form-row">
+          <span className="ov-form-label">From</span>
+          <input
+            type="date" value={taskingStart}
+            onChange={e => setTaskingStart(e.target.value)}
+            className="ov-date-input"
+          />
+        </div>
+
+        <div className="ov-form-row">
+          <span className="ov-form-label">To</span>
+          <input
+            type="date" value={taskingEnd}
+            onChange={e => setTaskingEnd(e.target.value)}
+            className="ov-date-input"
+          />
+        </div>
+
+        <button
+          className="ov-btn ov-btn-primary"
+          onClick={submitTasking}
+          disabled={!aoiGeom || taskingLoading}
+        >
+          {taskingLoading ? 'Searching…' : 'Find Coverage'}
+        </button>
+
+        {taskingResults !== null && (
+          <div className="ov-results">
+            <div className="ov-results-header">
+              {taskingResults.length === 0
+                ? 'No matches in window'
+                : `${taskingResults.length} match${taskingResults.length !== 1 ? 'es' : ''} found`}
+            </div>
+            {taskingResults.map((r, i) => (
+              <div key={`${r.source}-${r.pass_id}-${i}`} className="ov-result-item">
+                <div className="ov-result-top">
+                  <span
+                    className="ov-sensor-dot"
+                    style={{ background: r.source === 'real-s2' ? ACQ_COLOR : (SENSOR_COLORS[r.sensor_type] ?? '#aaa') }}
+                  />
+                  <span className="ov-result-sat">{r.satellite}</span>
+                  <span className={`ov-source-badge ${r.source === 'real-s2' ? 'ov-badge-real' : 'ov-badge-sim'}`}>
+                    {r.source === 'real-s2' ? 'Real S2' : 'Simulated'}
+                  </span>
+                </div>
+                <div className="ov-result-meta">
+                  <span>{r.sensor_type}</span>
+                  <span>{fmtTime(r.pass_start)}</span>
+                  <span>{r.cloud_cover_pct}% cloud · {r.coverage_km2} km²</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </aside>
 
       {/* Legend */}
       <aside className="ov-legend">
@@ -477,6 +813,17 @@ export default function App() {
           <div className="ov-legend-item">
             <span className="ov-legend-swatch" style={{ background: ACQ_COLOR }} />
             Real Sentinel-2
+          </div>
+        </div>
+        <div className="ov-legend-section" style={{ marginTop: 12 }}>
+          <div className="ov-legend-label">Tasking matches</div>
+          <div className="ov-legend-item">
+            <span className="ov-legend-swatch" style={{ background: MATCH_SIM_COLOR }} />
+            Simulated match
+          </div>
+          <div className="ov-legend-item">
+            <span className="ov-legend-swatch" style={{ background: ACQ_COLOR, opacity: 1 }} />
+            Real-S2 match
           </div>
         </div>
         <div className="ov-legend-section" style={{ marginTop: 12 }}>

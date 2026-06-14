@@ -3,12 +3,15 @@ import time
 import json
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import datetime
+from typing import Any
 
 import httpx
 import asyncpg
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
+from pydantic import BaseModel
 from prometheus_client import (
     Counter, Histogram, Gauge,
     generate_latest, CONTENT_TYPE_LATEST,
@@ -122,7 +125,7 @@ FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[FRONTEND_ORIGIN, "http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -360,3 +363,130 @@ async def get_tles():
 async def metrics():
     data = generate_latest()
     return Response(content=data, media_type=CONTENT_TYPE_LATEST)
+
+
+# ---------------------------------------------------------------------------
+# Ephemeral AOI match (no DB writes)
+# ---------------------------------------------------------------------------
+
+class AoiMatchRequest(BaseModel):
+    geometry: dict[str, Any]   # GeoJSON Polygon or MultiPolygon
+    sensor: str | None = None
+    max_cloud: float | None = None
+    window_start: str | None = None
+    window_end: str | None = None
+
+
+@app.post("/api/match")
+async def match_aoi(req: AoiMatchRequest):
+    t0 = time.perf_counter()
+
+    if req.geometry.get("type") not in ("Polygon", "MultiPolygon"):
+        raise HTTPException(
+            status_code=422,
+            detail="geometry.type must be Polygon or MultiPolygon",
+        )
+
+    pool = await get_pool()
+    geom_json = json.dumps(req.geometry)
+
+    # geometry is always $1; additional filters are appended
+    args: list[Any] = [geom_json]
+    pass_conds = ["ST_Intersects(p.footprint, aoi.geom)"]
+    acq_conds  = ["ST_Intersects(a.footprint, aoi.geom)"]
+
+    if req.sensor:
+        args.append(req.sensor)
+        n = len(args)
+        pass_conds.append(f"p.sensor_type = ${n}")
+        acq_conds.append(f"a.sensor = ${n}")
+
+    if req.max_cloud is not None:
+        args.append(req.max_cloud)
+        n = len(args)
+        pass_conds.append(f"p.cloud_cover_pct <= ${n}")
+        acq_conds.append(f"a.cloud_cover_pct <= ${n}")
+
+    if req.window_start:
+        try:
+            wstart = datetime.fromisoformat(req.window_start.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid window_start format")
+        args.append(wstart)
+        n = len(args)
+        pass_conds.append(f"p.pass_start >= ${n}")
+        acq_conds.append(f"a.acquired_at >= ${n}")
+
+    if req.window_end:
+        try:
+            wend = datetime.fromisoformat(req.window_end.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid window_end format")
+        args.append(wend)
+        n = len(args)
+        pass_conds.append(f"p.pass_end <= ${n}")
+        acq_conds.append(f"a.acquired_at <= ${n}")
+
+    where_pass = " AND ".join(pass_conds)
+    where_acq  = " AND ".join(acq_conds)
+
+    sql = f"""
+        WITH aoi AS (
+            SELECT ST_SetSRID(ST_GeomFromGeoJSON($1), 4326) AS geom
+        )
+        SELECT
+            p.id                                                             AS pass_id,
+            p.satellite,
+            p.sensor_type,
+            p.pass_start,
+            p.pass_end,
+            p.cloud_cover_pct,
+            ROUND(
+                (ST_Area(ST_Intersection(p.footprint, aoi.geom)::geography) / 1e6)::numeric,
+                2
+            )                                                                AS coverage_km2,
+            'simulated'                                                      AS source,
+            ST_AsGeoJSON(p.footprint)::text                                  AS geojson
+        FROM pass_footprints p, aoi
+        WHERE {where_pass}
+
+        UNION ALL
+
+        SELECT
+            a.id                                                             AS pass_id,
+            'Sentinel-2 (real)'                                              AS satellite,
+            a.sensor                                                         AS sensor_type,
+            a.acquired_at                                                    AS pass_start,
+            a.acquired_at                                                    AS pass_end,
+            a.cloud_cover_pct,
+            ROUND(
+                (ST_Area(ST_Intersection(a.footprint, aoi.geom)::geography) / 1e6)::numeric,
+                2
+            )                                                                AS coverage_km2,
+            'real-s2'                                                        AS source,
+            ST_AsGeoJSON(a.footprint)::text                                  AS geojson
+        FROM real_acquisitions a, aoi
+        WHERE {where_acq}
+
+        ORDER BY cloud_cover_pct, pass_start
+    """
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(sql, *args)
+
+    result = []
+    for r in rows:
+        result.append({
+            "pass_id":        r["pass_id"],
+            "satellite":      r["satellite"],
+            "sensor_type":    r["sensor_type"],
+            "pass_start":     r["pass_start"].isoformat(),
+            "pass_end":       r["pass_end"].isoformat(),
+            "cloud_cover_pct": float(r["cloud_cover_pct"]),
+            "coverage_km2":   float(r["coverage_km2"]) if r["coverage_km2"] is not None else 0.0,
+            "source":         r["source"],
+            "geojson":        r["geojson"],
+        })
+
+    _record("/api/match", 200, "POST", time.perf_counter() - t0)
+    return result
