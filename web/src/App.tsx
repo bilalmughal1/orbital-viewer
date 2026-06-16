@@ -112,6 +112,12 @@ export default function App() {
   const [loadingMatches, setLoadingMatches] = useState(false)
   const [selectedNeed, setSelectedNeed] = useState<NeedProps | null>(null)
   const [showSats, setShowSats] = useState(true)
+  const [showPasses, setShowPasses] = useState(false)
+
+  // Panel collapse state — both collapsed by default (map-first first impression).
+  // On narrow screens this keeps the bare globe + real data visible on landing.
+  const [taskingOpen, setTaskingOpen] = useState(false)
+  const [legendOpen, setLegendOpen] = useState(false)
 
   // Drawing state (refs for map handlers, state for UI re-render)
   const drawModeRef = useRef<DrawMode>('idle')
@@ -297,6 +303,7 @@ export default function App() {
         id: 'passes-fill',
         type: 'fill',
         source: 'passes',
+        layout: { visibility: 'none' },
         paint: {
           'fill-color': [
             'match', ['get', 'sensor_type'],
@@ -315,6 +322,7 @@ export default function App() {
         id: 'passes-outline',
         type: 'line',
         source: 'passes',
+        layout: { visibility: 'none' },
         paint: {
           'line-color': [
             'match', ['get', 'sensor_type'],
@@ -637,6 +645,17 @@ export default function App() {
     }
   }, [showSats])
 
+  // Toggle simulated-pass footprint visibility (off by default to keep the
+  // default view clean; these are simulated geometry, labelled as such).
+  useEffect(() => {
+    const m = map.current
+    if (!m) return
+    const vis = showPasses ? 'visible' : 'none'
+    for (const id of ['passes-fill', 'passes-outline']) {
+      if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', vis)
+    }
+  }, [showPasses])
+
   // Update matches panel inside popup whenever matches arrive
   useEffect(() => {
     if (!selectedNeed || matches === null) return
@@ -678,6 +697,9 @@ export default function App() {
       {/* Header */}
       <header className="ov-header">
         <span className="ov-title">Orbital Viewer — Tasking Demo</span>
+        <button className="ov-sat-toggle ov-passes-toggle" onClick={() => setShowPasses(v => !v)}>
+          {showPasses ? 'Hide sim passes' : 'Show sim passes'}
+        </button>
         <button className="ov-sat-toggle" onClick={() => setShowSats(v => !v)}>
           {showSats ? 'Hide orbits' : 'Show orbits'}
         </button>
@@ -687,9 +709,19 @@ export default function App() {
       <div ref={mapContainer} className="map-container" />
 
       {/* ── Tasking Request panel ─────────────────────────────────────── */}
-      <aside className="ov-tasking-panel">
-        <div className="ov-panel-title">Tasking Request</div>
+      <aside className={`ov-tasking-panel ${taskingOpen ? '' : 'ov-panel-collapsed'}`}>
+        <button
+          className="ov-panel-header"
+          onClick={() => setTaskingOpen(v => !v)}
+          aria-expanded={taskingOpen}
+        >
+          <span className="ov-panel-caret">{taskingOpen ? '▾' : '▸'}</span>
+          <span className="ov-panel-title">Tasking Request</span>
+          {!taskingOpen && <span className="ov-panel-hint">draw an AOI to find coverage</span>}
+        </button>
 
+        {taskingOpen && (
+        <div className="ov-panel-body">
         <div className="ov-panel-section-label">1 · Draw AOI</div>
         <div className="ov-draw-controls">
           <button
@@ -790,10 +822,22 @@ export default function App() {
             ))}
           </div>
         )}
+        </div>
+        )}
       </aside>
 
       {/* Legend */}
-      <aside className="ov-legend">
+      <aside className={`ov-legend ${legendOpen ? '' : 'ov-panel-collapsed'}`}>
+        <button
+          className="ov-panel-header"
+          onClick={() => setLegendOpen(v => !v)}
+          aria-expanded={legendOpen}
+        >
+          <span className="ov-panel-caret">{legendOpen ? '▾' : '▸'}</span>
+          <span className="ov-panel-title">Legend</span>
+        </button>
+        {legendOpen && (
+        <div className="ov-panel-body">
         <div className="ov-legend-section">
           <div className="ov-legend-label">Pass sensor type</div>
           {SENSOR_ORDER.map(s => (
@@ -836,6 +880,8 @@ export default function App() {
             Real satellite
           </div>
         </div>
+        </div>
+        )}
       </aside>
     </div>
   )
