@@ -113,6 +113,7 @@ export default function App() {
   const [selectedNeed, setSelectedNeed] = useState<NeedProps | null>(null)
   const [showSats, setShowSats] = useState(true)
   const [showPasses, setShowPasses] = useState(false)
+  const [showAcq, setShowAcq] = useState(false)
 
   // Panel collapse state — both collapsed by default (map-first first impression).
   // On narrow screens this keeps the bare globe + real data visible on landing.
@@ -237,10 +238,10 @@ export default function App() {
           's2cloudless': {
             type: 'raster',
             tiles: [
-              'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2023_3857/default/g/{z}/{y}/{x}.jpg',
+              'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/{z}/{y}/{x}.jpg',
             ],
             tileSize: 256,
-            attribution: '© EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2023)',
+            attribution: '© EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024)',
             maxzoom: 15,
           },
         },
@@ -370,6 +371,7 @@ export default function App() {
         id: 'acquisitions-fill',
         type: 'fill',
         source: 'acquisitions',
+        layout: { visibility: 'none' },
         paint: {
           'fill-color': ACQ_COLOR,
           'fill-opacity': 0.18,
@@ -380,6 +382,7 @@ export default function App() {
         id: 'acquisitions-outline',
         type: 'line',
         source: 'acquisitions',
+        layout: { visibility: 'none' },
         paint: {
           'line-color': ACQ_COLOR,
           'line-width': 1.5,
@@ -656,6 +659,17 @@ export default function App() {
     }
   }, [showPasses])
 
+  // Toggle real Sentinel-2 acquisition visibility (off by default for a clean
+  // first view; clicking a shown footprint reveals its real Copernicus metadata).
+  useEffect(() => {
+    const m = map.current
+    if (!m) return
+    const vis = showAcq ? 'visible' : 'none'
+    for (const id of ['acquisitions-fill', 'acquisitions-outline']) {
+      if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', vis)
+    }
+  }, [showAcq])
+
   // Update matches panel inside popup whenever matches arrive
   useEffect(() => {
     if (!selectedNeed || matches === null) return
@@ -699,6 +713,9 @@ export default function App() {
         <span className="ov-title">Orbital Viewer — Tasking Demo</span>
         <button className="ov-sat-toggle ov-passes-toggle" onClick={() => setShowPasses(v => !v)}>
           {showPasses ? 'Hide sim passes' : 'Show sim passes'}
+        </button>
+        <button className="ov-sat-toggle ov-acq-toggle" onClick={() => setShowAcq(v => !v)}>
+          {showAcq ? 'Hide acquisitions' : 'Show acquisitions'}
         </button>
         <button className="ov-sat-toggle" onClick={() => setShowSats(v => !v)}>
           {showSats ? 'Hide orbits' : 'Show orbits'}
