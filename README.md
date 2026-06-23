@@ -14,7 +14,7 @@ Orbital Viewer matches collection needs (where a customer wants imagery) against
 
 | Element | Real / simulated |
 |---|---|
-| Basemap imagery | **Real** — EOX Sentinel-2 cloudless 2023 mosaic |
+| Basemap imagery | **Real** — EOX Sentinel-2 cloudless 2025 mosaic |
 | Geography & coordinates | **Real** — AOIs at real Gulf locations |
 | Spatial computation | **Real** — PostGIS `ST_Intersects` / `ST_Area`, genuine math |
 | Satellite orbit tracks | **Real** — live TLEs from CelesTrak, propagated with SGP4 |
@@ -33,7 +33,7 @@ The principle: real where it can be (geography, imagery, orbits, computation), s
 | Frontend | React 19 + TypeScript + Vite, MapLibre GL JS v5 (globe projection) |
 | Orbit propagation | satellite.js (SGP4) over live CelesTrak TLEs |
 | Imagery catalogue | Copernicus Data Space STAC API (Sentinel-2 L2A) |
-| Basemap | EOX Sentinel-2 cloudless 2023 (WMTS, free tier) |
+| Basemap | EOX Sentinel-2 cloudless 2025 (WMTS, free tier) |
 | Infrastructure | Docker Compose, nginx, Cloudflare, GitHub Actions CI/CD |
 
 ## How it works

@@ -27,7 +27,7 @@ everywhere it appears:
 
 | Element | Real or simulated | Notes |
 |---|---|---|
-| Basemap imagery | **Real** | EOX Sentinel-2 cloudless 2023 mosaic (actual satellite imagery) |
+| Basemap imagery | **Real** | EOX Sentinel-2 cloudless 2025 mosaic (actual satellite imagery) |
 | Geography / coordinates | **Real** | AOIs placed at real Gulf locations (Ruwais, Musaffah, etc.) |
 | Spatial computation | **Real** | PostGIS `ST_Intersects` / `ST_Area`, genuine math |
 | Satellite orbit tracks | **Real** | Live TLEs from CelesTrak, propagated with SGP4 |
@@ -243,7 +243,7 @@ Secrets (`VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_PATH`).
 | Database | PostgreSQL 16 + PostGIS 3.4 (kartoza image), GiST indexes |
 | API | FastAPI + asyncpg (no ORM), uvicorn, prometheus_client |
 | Frontend | React 19, TypeScript, Vite, MapLibre GL JS v5, satellite.js |
-| Basemap | EOX s2cloudless-2023 (WMTS, free tier) |
+| Basemap | EOX s2cloudless-2025 (WMTS, free tier) |
 | External data | CelesTrak (TLEs), Copernicus Data Space STAC (Sentinel-2 L2A) |
 | Infra | Docker Compose, nginx, Nginx Proxy Manager, Cloudflare, GitHub Actions |
 

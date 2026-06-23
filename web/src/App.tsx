@@ -238,10 +238,10 @@ export default function App() {
           's2cloudless': {
             type: 'raster',
             tiles: [
-              'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/{z}/{y}/{x}.jpg',
+              'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2025_3857/default/g/{z}/{y}/{x}.jpg',
             ],
             tileSize: 256,
-            attribution: '© EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024)',
+            attribution: 'Sentinel-2 cloudless 2025 by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2025)',
             maxzoom: 15,
           },
         },
